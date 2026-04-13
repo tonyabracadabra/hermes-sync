@@ -1,0 +1,69 @@
+#!/bin/bash
+# CC Factory - Universal Claude Code Multi-Agent System
+# Works with any Git repository
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
+source "${SCRIPT_DIR}/core.sh"
+
+# Parse command
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+    init)
+        exec "${SCRIPT_DIR}/../commands/init.sh" "$@"
+        ;;
+    status|st)
+        exec "${SCRIPT_DIR}/../commands/status.sh" "$@"
+        ;;
+    start|s)
+        exec "${SCRIPT_DIR}/../commands/start.sh" "$@"
+        ;;
+    attach|a)
+        exec "${SCRIPT_DIR}/../commands/attach.sh" "$@"
+        ;;
+    cmd|c)
+        exec "${SCRIPT_DIR}/../commands/cmd.sh" "$@"
+        ;;
+    recycle|r)
+        exec "${SCRIPT_DIR}/../commands/recycle.sh" "$@"
+        ;;
+    sync)
+        exec "${SCRIPT_DIR}/../commands/sync.sh" "$@"
+        ;;
+    help|h|--help|-h)
+        cat << 'EOF'
+CC Factory - Universal Claude Code Multi-Agent System
+
+Usage: ccf <command> [options]
+
+Commands:
+  init                    Initialize CC Factory for current project
+  status, st             Show all slot statuses
+  start, s <n> <desc>    Start task in slot n
+  attach, a <n>          Attach to slot n interactively
+  cmd, c <n> <command>   Send command to slot n (e.g., '/simplify')
+  recycle, r <n>         Archive and cleanup slot n
+  sync                   Sync memories to git
+  help, h                Show this help
+
+Examples:
+  ccf init
+  ccf status
+  ccf start 1 "Fix auth bug in src/auth.ts"
+  ccf cmd 1 '/simplify'
+  ccf recycle 1
+
+Environment:
+  MAX_SLOTS          Maximum parallel slots (default: 5)
+  FACTORY_NAME       Session prefix (default: cc-factory)
+EOF
+        ;;
+    *)
+        error "Unknown command: $COMMAND"
+        echo "Run 'ccf help' for usage"
+        exit 1
+        ;;
+esac
