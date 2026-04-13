@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
-source "${SCRIPT_DIR}/core.sh"
+HERMES_SYNC_HOME="${HERMES_SYNC_HOME:-$HOME/.hermes-sync}"
+source "${HERMES_SYNC_HOME}/lib/core.sh"
 
 # Parse command
 COMMAND="${1:-help}"
@@ -13,25 +13,25 @@ shift || true
 
 case "$COMMAND" in
     init)
-        exec "${SCRIPT_DIR}/../commands/init.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/init.sh" "$@"
         ;;
     status|st)
-        exec "${SCRIPT_DIR}/../commands/status.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/status.sh" "$@"
         ;;
     start|s)
-        exec "${SCRIPT_DIR}/../commands/start.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/start.sh" "$@"
         ;;
     attach|a)
-        exec "${SCRIPT_DIR}/../commands/attach.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/attach.sh" "$@"
         ;;
     cmd|c)
-        exec "${SCRIPT_DIR}/../commands/cmd.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/cmd.sh" "$@"
         ;;
     recycle|r)
-        exec "${SCRIPT_DIR}/../commands/recycle.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/recycle.sh" "$@"
         ;;
     sync)
-        exec "${SCRIPT_DIR}/../commands/sync.sh" "$@"
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/sync.sh" "$@"
         ;;
     help|h|--help|-h)
         cat << 'EOF'

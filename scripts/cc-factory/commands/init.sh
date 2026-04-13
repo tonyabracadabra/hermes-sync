@@ -3,8 +3,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../lib/core.sh"
+HERMES_SYNC_HOME="${HERMES_SYNC_HOME:-$HOME/.hermes-sync}"
+source "${HERMES_SYNC_HOME}/lib/core.sh"
 
 log "Initializing CC Factory for $(get_project_name)..."
 
