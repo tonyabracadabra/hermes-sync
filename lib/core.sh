@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hermes Sync Core Functions
+# Hermes Sync Core Functions - Global Factory Architecture
 
 set -euo pipefail
 
@@ -8,6 +8,7 @@ HERMES_SYNC_HOME="${HERMES_SYNC_HOME:-$HOME/.hermes-sync}"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 MAX_SLOTS="${MAX_SLOTS:-5}"
 FACTORY_NAME="${FACTORY_NAME:-cc-factory}"
+FACTORY_ROOT="${HOME}/.cc-factory"
 
 # Colors
 RED='\033[0;31m'
@@ -16,10 +17,40 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-log() { echo -e "${BLUE}[hermes-sync]${NC} $1"; }
-success() { echo -e "${GREEN}[hermes-sync]${NC} $1"; }
-warn() { echo -e "${YELLOW}[hermes-sync]${NC} $1"; }
-error() { echo -e "${RED}[hermes-sync]${NC} $1"; }
+log() { echo -e "${BLUE}[${FACTORY_NAME}]${NC} $1"; }
+success() { echo -e "${GREEN}[${FACTORY_NAME}]${NC} $1"; }
+warn() { echo -e "${YELLOW}[${FACTORY_NAME}]${NC} $1"; }
+error() { echo -e "${RED}[${FACTORY_NAME}]${NC} $1"; }
+
+# Get global factory root
+get_factory_root() {
+    echo "$FACTORY_ROOT"
+}
+
+# Ensure factory directory structure exists
+ensure_factory_dirs() {
+    mkdir -p "${FACTORY_ROOT}/repos"
+}
+
+# Get repo ID from path (hash-based to avoid special chars)
+get_repo_id() {
+    local repo_path="${1:-$(get_project_root)}"
+    # Use path hash + last dir name for uniqueness and readability
+    local path_hash=$(echo "$repo_path" | sha256sum | cut -c1-8)
+    local dir_name=$(basename "$repo_path")
+    echo "${dir_name}_${path_hash}"
+}
+
+# Get repo path from repo_id (reverse lookup via stored metadata)
+get_repo_path() {
+    local repo_id=$1
+    local meta_file="${FACTORY_ROOT}/repos/${repo_id}/.repo_path"
+    if [[ -f "$meta_file" ]]; then
+        cat "$meta_file"
+    else
+        echo ""
+    fi
+}
 
 # Check if running in a git repo
 check_git_repo() {
@@ -60,25 +91,61 @@ generate_task_id() {
     echo "$(date +%s)-$(openssl rand -hex 4)"
 }
 
-# Create worktree for slot
+# Get repo base directory in factory
+get_repo_factory_dir() {
+    local repo_id=$1
+    echo "${FACTORY_ROOT}/repos/${repo_id}"
+}
+
+# Register repo in factory (stores metadata)
+register_repo() {
+    local repo_root=$(get_project_root)
+    local repo_id=$(get_repo_id "$repo_root")
+    local factory_dir=$(get_repo_factory_dir "$repo_id")
+    
+    ensure_factory_dirs
+    mkdir -p "$factory_dir"/{worktrees,status,logs,archive}
+    
+    # Store repo path for reverse lookup
+    echo "$repo_root" > "${factory_dir}/.repo_path"
+    
+    # Store repo metadata
+    cat > "${factory_dir}/.repo_info.json" << EOF
+{
+    "repo_id": "${repo_id}",
+    "repo_path": "${repo_root}",
+    "repo_name": "$(get_project_name)",
+    "registered_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+    
+    echo "$repo_id"
+}
+
+# Create worktree for slot in global factory
 create_worktree() {
     local slot_id=$1
     local task_id=$2
-    local project_root=$(get_project_root)
-    local worktree_base="${project_root}/.cc-factory/worktrees"
-    local worktree_path="${worktree_base}/slot-${slot_id}"
+    local repo_root=$(get_project_root)
+    local repo_id=$(get_repo_id "$repo_root")
+    local factory_dir=$(get_repo_factory_dir "$repo_id")
+    local worktree_path="${factory_dir}/worktrees/slot-${slot_id}"
     
-    mkdir -p "$worktree_base"
+    # Ensure repo is registered
+    if [[ ! -f "${factory_dir}/.repo_path" ]]; then
+        register_repo > /dev/null
+    fi
     
     # Archive old if exists
     if [[ -d "$worktree_path" ]]; then
-        local archive_dir="${worktree_base}/.archive"
+        local archive_dir="${factory_dir}/archive"
         mkdir -p "$archive_dir"
         mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)"
     fi
     
-    git worktree add "$worktree_path" -b "cc/${task_id}" 2>/dev/null || \
-        git worktree add "$worktree_path" "cc/${task_id}" 2>/dev/null || \
+    # Create worktree using git -C (worktree path is external to repo, but branch is tracked)
+    git -C "$repo_root" worktree add "$worktree_path" -b "cc/${task_id}" 2>/dev/null || \
+        git -C "$repo_root" worktree add "$worktree_path" "cc/${task_id}" 2>/dev/null || \
         { error "Failed to create worktree"; exit 1; }
     
     echo "$worktree_path"
@@ -87,9 +154,11 @@ create_worktree() {
 # Archive worktree
 archive_worktree() {
     local slot_id=$1
-    local project_root=$(get_project_root)
-    local worktree_path="${project_root}/.cc-factory/worktrees/slot-${slot_id}"
-    local archive_dir="${project_root}/.cc-factory/worktrees/.archive"
+    local repo_root=$(get_project_root)
+    local repo_id=$(get_repo_id "$repo_root")
+    local factory_dir=$(get_repo_factory_dir "$repo_id")
+    local worktree_path="${factory_dir}/worktrees/slot-${slot_id}"
+    local archive_dir="${factory_dir}/archive"
     
     if [[ -d "$worktree_path" ]]; then
         mkdir -p "$archive_dir"
@@ -97,21 +166,24 @@ archive_worktree() {
     fi
 }
 
-# Get slot status file
+# Get slot status file (global)
 get_slot_status_file() {
     local slot_id=$1
-    local project_root=$(get_project_root)
-    echo "${project_root}/.cc-factory/status/slot-${slot_id}.json"
+    local repo_id="${2:-$(get_repo_id)}"
+    local factory_dir=$(get_repo_factory_dir "$repo_id")
+    echo "${factory_dir}/status/slot-${slot_id}.json"
 }
 
-# Update slot status
+# Update slot status (global)
 update_slot_status() {
     local slot_id=$1
     local status=$2
     local task_desc="${3:-}"
-    local project_root=$(get_project_root)
-    local status_file=$(get_slot_status_file "$slot_id")
-    local worktree_base="${project_root}/.cc-factory"
+    local repo_root=$(get_project_root)
+    local repo_id=$(get_repo_id "$repo_root")
+    local factory_dir=$(get_repo_factory_dir "$repo_id")
+    local status_file=$(get_slot_status_file "$slot_id" "$repo_id")
+    local worktree_path="${factory_dir}/worktrees/slot-${slot_id}"
     
     mkdir -p "$(dirname "$status_file")"
     
@@ -120,17 +192,20 @@ update_slot_status() {
     "slot_id": ${slot_id},
     "status": "${status}",
     "task": "${task_desc}",
-    "project": "$(get_project_name)",
+    "repo_name": "$(get_project_name)",
+    "repo_path": "${repo_root}",
+    "repo_id": "${repo_id}",
     "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "worktree": "${worktree_base}/worktrees/slot-${slot_id}"
+    "worktree": "${worktree_path}"
 }
 EOF
 }
 
-# Get slot status
+# Get slot status (global)
 get_slot_status() {
     local slot_id=$1
-    local status_file=$(get_slot_status_file "$slot_id")
+    local repo_id="${2:-$(get_repo_id)}"
+    local status_file=$(get_slot_status_file "$slot_id" "$repo_id")
     
     if [[ -f "$status_file" ]]; then
         cat "$status_file"
@@ -145,9 +220,57 @@ zellij_session_exists() {
     zellij list-sessions 2>/dev/null | grep -q "^${session_name}\s"
 }
 
-# Get project-specific session name
+# Get session name (using repo_id for uniqueness across all repos)
 get_session_name() {
     local slot_id=$1
-    local project=$(get_project_name)
-    echo "${FACTORY_NAME}-${project}-${slot_id}"
+    local repo_id="${2:-$(get_repo_id)}"
+    echo "${FACTORY_NAME}-${repo_id}-${slot_id}"
+}
+
+# List all registered repos
+list_registered_repos() {
+    if [[ ! -d "${FACTORY_ROOT}/repos" ]]; then
+        return
+    fi
+    
+    for repo_dir in "${FACTORY_ROOT}/repos"/*; do
+        if [[ -d "$repo_dir" && -f "${repo_dir}/.repo_info.json" ]]; then
+            basename "$repo_dir"
+        fi
+    done
+}
+
+# Get all slots status for all repos or specific repo
+get_all_slots_status() {
+    local target_repo_id="${1:-}"
+    
+    if [[ ! -d "${FACTORY_ROOT}/repos" ]]; then
+        return
+    fi
+    
+    for repo_dir in "${FACTORY_ROOT}/repos"/*; do
+        if [[ ! -d "$repo_dir" ]]; then
+            continue
+        fi
+        
+        local repo_id=$(basename "$repo_dir")
+        
+        # Filter if target specified
+        if [[ -n "$target_repo_id" && "$repo_id" != "$target_repo_id" ]]; then
+            continue
+        fi
+        
+        local repo_info="${repo_dir}/.repo_info.json"
+        local repo_name="unknown"
+        if [[ -f "$repo_info" ]]; then
+            repo_name=$(grep -o '"repo_name": "[^"]*"' "$repo_info" | cut -d'"' -f4 || echo "unknown")
+        fi
+        
+        for i in $(seq 1 "$MAX_SLOTS"); do
+            local status_file="${repo_dir}/status/slot-${i}.json"
+            if [[ -f "$status_file" ]]; then
+                echo "${repo_id}|${repo_name}|${i}|$(cat "$status_file")"
+            fi
+        done
+    done
 }

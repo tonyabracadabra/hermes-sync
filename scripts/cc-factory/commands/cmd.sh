@@ -1,5 +1,5 @@
 #!/bin/bash
-# Send command to a running CC session
+# Send command to slot (Global Factory Architecture)
 
 set -euo pipefail
 
@@ -11,24 +11,24 @@ COMMAND="${2:-}"
 
 if [[ -z "$SLOT_ID" || -z "$COMMAND" ]]; then
     echo "Usage: ccf cmd <slot_id> <command>"
-    echo "Examples:"
-    echo "  ccf cmd 1 '/simplify'"
-    echo "  ccf cmd 1 '/code-audit'"
-    echo "  ccf cmd 1 'exit'"
+    echo "Example: ccf cmd 1 '/simplify'"
     exit 1
 fi
 
-SESSION_NAME=$(get_session_name "$SLOT_ID")
+check_git_repo 2>/dev/null || { error "Not in a git repository"; exit 1; }
+
+repo_id=$(get_repo_id)
+repo_name=$(get_project_name)
+SESSION_NAME=$(get_session_name "$SLOT_ID" "$repo_id")
 
 if ! zellij_session_exists "$SESSION_NAME"; then
-    error "Session $SESSION_NAME is not running"
+    error "Slot $SLOT_ID is not running for $repo_name"
     exit 1
 fi
 
-log "Sending to slot $SLOT_ID: $COMMAND"
+log "Sending command to slot $SLOT_ID: $COMMAND"
 
 zellij --session "$SESSION_NAME" action write-chars "$COMMAND"
-sleep 0.5
 zellij --session "$SESSION_NAME" action write-chars "
 "
 

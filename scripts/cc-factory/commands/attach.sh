@@ -1,5 +1,5 @@
 #!/bin/bash
-# Attach to a CC session
+# Attach to slot interactively (Global Factory Architecture)
 
 set -euo pipefail
 
@@ -10,20 +10,23 @@ SLOT_ID="${1:-}"
 
 if [[ -z "$SLOT_ID" ]]; then
     echo "Usage: ccf attach <slot_id>"
-    echo "Example: ccf attach 1"
     exit 1
 fi
 
-SESSION_NAME=$(get_session_name "$SLOT_ID")
+check_git_repo 2>/dev/null || { error "Not in a git repository"; exit 1; }
+
+repo_id=$(get_repo_id)
+repo_name=$(get_project_name)
+SESSION_NAME=$(get_session_name "$SLOT_ID" "$repo_id")
 
 if ! zellij_session_exists "$SESSION_NAME"; then
-    error "Session $SESSION_NAME is not running"
-    log "Use 'ccf start $SLOT_ID <description>' to start"
+    error "Slot $SLOT_ID is not running for $repo_name"
+    log "Start it first with: ccf start $SLOT_ID '<task description>'"
     exit 1
 fi
 
-log "Attaching to slot $SLOT_ID..."
-log "Press Ctrl+O then D to detach (session keeps running)"
+log "Attaching to slot $SLOT_ID ($repo_name)..."
+log "Press Ctrl+O to detach (or 'Ctrl+b d' if using tmux-like bindings)"
 echo ""
 
-zellij attach "$SESSION_NAME"
+exec zellij attach "$SESSION_NAME"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Recycle (archive and cleanup) a completed slot
+# Recycle (archive and cleanup) a completed slot (Global Factory Architecture)
 
 set -euo pipefail
 
@@ -13,9 +13,13 @@ if [[ -z "$SLOT_ID" ]]; then
     exit 1
 fi
 
-SESSION_NAME=$(get_session_name "$SLOT_ID")
+check_git_repo 2>/dev/null || { error "Not in a git repository"; exit 1; }
 
-log "Recycling slot $SLOT_ID..."
+repo_id=$(get_repo_id)
+repo_name=$(get_project_name)
+SESSION_NAME=$(get_session_name "$SLOT_ID" "$repo_id")
+
+log "Recycling slot $SLOT_ID for $repo_name..."
 
 # Exit gracefully if running
 if zellij_session_exists "$SESSION_NAME"; then
