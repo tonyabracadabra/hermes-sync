@@ -140,8 +140,12 @@ create_worktree() {
     if [[ -d "$worktree_path" ]]; then
         local archive_dir="${factory_dir}/archive"
         mkdir -p "$archive_dir"
-        mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)"
+        git -C "$repo_root" worktree remove "$worktree_path" 2>/dev/null || true
+        mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)" 2>/dev/null || true
     fi
+    
+    # Also prune any stale worktree registrations
+    git -C "$repo_root" worktree prune 2>/dev/null || true
     
     # Create worktree using git -C (worktree path is external to repo, but branch is tracked)
     git -C "$repo_root" worktree add "$worktree_path" -b "cc/${task_id}" 2>/dev/null || \
@@ -162,8 +166,13 @@ archive_worktree() {
     
     if [[ -d "$worktree_path" ]]; then
         mkdir -p "$archive_dir"
-        mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)"
+        # Properly remove from git worktree list
+        git -C "$repo_root" worktree remove "$worktree_path" 2>/dev/null || true
+        mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)" 2>/dev/null || true
     fi
+    
+    # Clean up stale worktree registrations
+    git -C "$repo_root" worktree prune 2>/dev/null || true
 }
 
 # Get slot status file (global)
