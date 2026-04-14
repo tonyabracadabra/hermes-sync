@@ -31,6 +31,15 @@ TASK_ID=$(generate_task_id)
 
 log "Starting task in slot $SLOT_ID for $repo_name: $TASK_DESC"
 
+# Check if slot is already running
+if zellij_session_exists "$SESSION_NAME" 2>/dev/null; then
+    warn "Slot $SLOT_ID is currently running!"
+    warn "Current task will be archived before starting new one."
+    warn "To keep current task, use a different slot or 'ccf recycle $SLOT_ID' first."
+    echo ""
+    sleep 2
+fi
+
 # Archive old worktree
 archive_worktree "$SLOT_ID" 2>/dev/null || true
 
@@ -91,7 +100,16 @@ zellij --session "$SESSION_NAME" action write-chars "
 # Update status
 update_slot_status "$SLOT_ID" "running" "$TASK_DESC"
 
-success "Slot $SLOT_ID started with task: $TASK_ID"
-log "To attach: ccf attach $SLOT_ID"
-log "To send /simplify: ccf cmd $SLOT_ID '/simplify'"
-log "To check status: ccf status"
+success "Slot $SLOT_ID started for $repo_name"
+worktree_branch=$(git -C "$WORKTREE_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+worktree_commit=$(git -C "$WORKTREE_PATH" log --oneline -1 2>/dev/null | awk '{print $1}' || echo "unknown")
+log "Branch: $worktree_branch"
+log "Base commit: $worktree_commit"
+log "Worktree: $WORKTREE_PATH"
+log ""
+log "Commands:"
+log "  ccf attach $SLOT_ID           - Interactive attach"
+log "  ccf cmd $SLOT_ID '/simplify'  - Send slash command"
+log "  ccf recycle $SLOT_ID          - Finish task (deletes branch)"
+log ""
+log "After commit: push origin $worktree_branch → create PR → ccf recycle $SLOT_ID"

@@ -33,8 +33,8 @@ if zellij_session_exists "$SESSION_NAME"; then
     zellij delete-session "$SESSION_NAME" 2>/dev/null || true
 fi
 
-# Archive worktree
-archive_worktree "$SLOT_ID"
+# Archive worktree and delete branch (task is done)
+archive_worktree "$SLOT_ID" "true"
 
 # Update status
 update_slot_status "$SLOT_ID" "idle" ""

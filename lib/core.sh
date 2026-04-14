@@ -123,6 +123,7 @@ EOF
 }
 
 # Create worktree for slot in global factory
+# Creates a fresh worktree based on origin/main (or origin/master)
 create_worktree() {
     local slot_id=$1
     local task_id=$2
@@ -130,6 +131,7 @@ create_worktree() {
     local repo_id=$(get_repo_id "$repo_root")
     local factory_dir=$(get_repo_factory_dir "$repo_id")
     local worktree_path="${factory_dir}/worktrees/slot-${slot_id}"
+    local branch_name="cc/${task_id}"
     
     # Ensure repo is registered
     if [[ ! -f "${factory_dir}/.repo_path" ]]; then
@@ -144,31 +146,90 @@ create_worktree() {
         mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)" 2>/dev/null || true
     fi
     
-    # Also prune any stale worktree registrations
+    # Clean up stale worktree registrations and old branches
     git -C "$repo_root" worktree prune 2>/dev/null || true
     
-    # Create worktree using git -C (worktree path is external to repo, but branch is tracked)
-    git -C "$repo_root" worktree add "$worktree_path" -b "cc/${task_id}" 2>/dev/null || \
-        git -C "$repo_root" worktree add "$worktree_path" "cc/${task_id}" 2>/dev/null || \
-        { error "Failed to create worktree"; exit 1; }
+    # Delete old branch if exists (clean start)
+    git -C "$repo_root" branch -D "$branch_name" 2>/dev/null || true
+    
+    # Fetch latest from origin to ensure we're based on newest main
+    log "Fetching latest from origin..."
+    git -C "$repo_root" fetch origin 2>/dev/null || warn "Failed to fetch from origin, using local branches"
+    
+    # Determine base branch (main or master)
+    local base_branch=""
+    if git -C "$repo_root" rev-parse --verify origin/main &>/dev/null; then
+        base_branch="origin/main"
+    elif git -C "$repo_root" rev-parse --verify origin/master &>/dev/null; then
+        base_branch="origin/master"
+    elif git -C "$repo_root" rev-parse --verify main &>/dev/null; then
+        base_branch="main"
+    elif git -C "$repo_root" rev-parse --verify master &>/dev/null; then
+        base_branch="master"
+    else
+        base_branch="HEAD"
+        warn "No main/master branch found, using current HEAD"
+    fi
+    
+    log "Creating worktree from base: $base_branch"
+    
+    # Create worktree with new branch based on origin/main
+    # Use -B to force create/reset branch, ensuring clean state
+    if ! git -C "$repo_root" worktree add -b "$branch_name" "$worktree_path" "$base_branch" 2>/dev/null; then
+        # Fallback: branch might exist locally, try to use it
+        if ! git -C "$repo_root" worktree add "$worktree_path" "$branch_name" 2>/dev/null; then
+            error "Failed to create worktree for slot $slot_id"
+            error "Base branch: $base_branch"
+            error "Worktree path: $worktree_path"
+            exit 1
+        fi
+    fi
+    
+    # Verify worktree was created
+    if [[ ! -d "$worktree_path/.git" ]]; then
+        error "Worktree creation failed: $worktree_path"
+        exit 1
+    fi
+    
+    # Log the commit we're based on
+    local base_commit=$(git -C "$worktree_path" rev-parse --short HEAD)
+    log "Worktree created at commit: $base_commit (from $base_branch)"
     
     echo "$worktree_path"
 }
 
 # Archive worktree
+# Optionally deletes the associated branch (default: keep branch for PR)
 archive_worktree() {
     local slot_id=$1
+    local delete_branch="${2:-false}"
     local repo_root=$(get_project_root)
     local repo_id=$(get_repo_id "$repo_root")
     local factory_dir=$(get_repo_factory_dir "$repo_id")
     local worktree_path="${factory_dir}/worktrees/slot-${slot_id}"
     local archive_dir="${factory_dir}/archive"
     
+    # Get branch name before removing worktree (if we need to delete it)
+    local branch_name=""
+    if [[ "$delete_branch" == "true" && -d "$worktree_path" ]]; then
+        branch_name=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    fi
+    
     if [[ -d "$worktree_path" ]]; then
         mkdir -p "$archive_dir"
         # Properly remove from git worktree list
-        git -C "$repo_root" worktree remove "$worktree_path" 2>/dev/null || true
+        if ! git -C "$repo_root" worktree remove "$worktree_path" 2>/dev/null; then
+            # Force remove if normal remove fails (uncommitted changes, etc)
+            git -C "$repo_root" worktree remove --force "$worktree_path" 2>/dev/null || true
+        fi
+        # Move to archive even if git worktree remove failed
         mv "$worktree_path" "${archive_dir}/slot-${slot_id}-$(date +%s)" 2>/dev/null || true
+    fi
+    
+    # Optionally delete branch (for recycle command - task is done)
+    if [[ "$delete_branch" == "true" && -n "$branch_name" && "$branch_name" != HEAD ]]; then
+        git -C "$repo_root" branch -D "$branch_name" 2>/dev/null || true
+        log "Deleted branch: $branch_name"
     fi
     
     # Clean up stale worktree registrations

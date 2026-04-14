@@ -30,8 +30,8 @@ case "$COMMAND" in
     recycle|r)
         exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/recycle.sh" "$@"
         ;;
-    sync)
-        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/sync.sh" "$@"
+    branches|b)
+        exec "${HERMES_SYNC_HOME}/scripts/cc-factory/commands/branches.sh" "$@"
         ;;
     help|h|--help|-h)
         cat << 'EOF'
@@ -40,24 +40,30 @@ CC Factory - Universal Claude Code Multi-Agent System
 Usage: ccf <command> [options]
 
 Commands:
-  init                    Initialize CC Factory for current project
-  status, st             Show all slot statuses
+  init                    Register current project (optional, auto-registered on start)
+  status [all|<repo>]    Show slot status (current repo, all repos, or specific repo)
   start, s <n> <desc>    Start task in slot n
   attach, a <n>          Attach to slot n interactively
   cmd, c <n> <command>   Send command to slot n (e.g., '/simplify')
-  recycle, r <n>         Archive and cleanup slot n
-  sync                   Sync memories to git
+  recycle, r <n>         Archive slot n and delete its branch
+  branches, b [all]      List all cc/* branches with status
   help, h                Show this help
 
 Examples:
-  ccf init
-  ccf status
   ccf start 1 "Fix auth bug in src/auth.ts"
   ccf cmd 1 '/simplify'
+  ccf status all
+  ccf branches
   ccf recycle 1
 
+Workflow:
+  1. ccf start 1 "<task>"  - Creates worktree from origin/main
+  2. ccf cmd 1 '/simplify' - Send slash commands
+  3. git commit && push    - In worktree directory
+  4. ccf recycle 1         - Clean up slot (deletes branch)
+
 Environment:
-  MAX_SLOTS          Maximum parallel slots (default: 5)
+  MAX_SLOTS          Maximum parallel slots per repo (default: 5)
   FACTORY_NAME       Session prefix (default: cc-factory)
 EOF
         ;;
